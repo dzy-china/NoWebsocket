@@ -1,5 +1,5 @@
-from websocket.application import WebSocketApplication
-from websocket.router import Blueprint
+from NoWebsocket.application import WebSocketApplication
+from NoWebsocket.router import Blueprint
 
 chat_bp = Blueprint(prefix='/chat')
 

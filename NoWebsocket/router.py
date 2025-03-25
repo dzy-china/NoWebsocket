@@ -1,6 +1,6 @@
 # websocket/router.py
 import re
-import importlib.util
+import importlib
 import os
 from pathlib import Path
 
@@ -84,33 +84,46 @@ class Blueprint:
         :param package_path: 蓝图包路径，默认为'blueprints'
         :param bp_suffix: 蓝图实例后缀，默认为'_bp'
         """
-        package_dir = Path(__file__).parent.parent / package_path
+        try:
+            # 导入蓝图包
+            package = importlib.import_module(package_path)
+        except ImportError as e:
+            raise ValueError(f"Package {package_path} not found") from e
+
+        # 获取蓝图包的目录路径
+        package_dir = Path(package.__file__).parent.resolve()
 
         if not package_dir.exists():
             raise ValueError(f"Blueprint directory {package_dir} not found")
 
+        # 遍历蓝图包目录下的所有文件
         for root, _, files in os.walk(package_dir):
-            relative_path = Path(root).relative_to(package_dir.parent)
-            package_prefix = str(relative_path).replace(os.sep, '.')
+            # 计算相对于包目录的相对路径
+            relative_root = Path(root).relative_to(package_dir)
+            # 构造模块名前缀
+            module_parts = list(relative_root.parts)
+            if module_parts:
+                module_prefix = f"{package_path}.{'.'.join(module_parts)}"
+            else:
+                module_prefix = package_path
 
-            for file in files:
-                if not file.endswith('.py') or file == '__init__.py':
+            for file_name in files:
+                if not file_name.endswith('.py') or file_name == '__init__.py':
                     continue
 
-                module_name = f"{package_prefix}.{file[:-3]}"
+                # 提取模块名
+                module_name = f"{module_prefix}.{file_name[:-3]}"
+
                 try:
-                    spec = importlib.util.spec_from_file_location(
-                        module_name,
-                        os.path.join(root, file)
-                    )
-                    module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(module)
-
-                    for attr in dir(module):
-                        obj = getattr(module, attr)
-                        if isinstance(obj, Blueprint) and attr.endswith(bp_suffix):
-                            obj.register(router)
-                            print(f"Auto-registered blueprint: {module_name}.{attr}")
-
+                    # 动态导入模块
+                    module = importlib.import_module(module_name)
                 except Exception as e:
-                    print(f"Failed to load {file}: {str(e)}")
+                    print(f"Failed to import module {module_name}: {str(e)}")
+                    continue
+
+                # 查找模块中的Blueprint实例
+                for attr_name in dir(module):
+                    obj = getattr(module, attr_name)
+                    if isinstance(obj, Blueprint) and attr_name.endswith(bp_suffix):
+                        obj.register(router)
+                        print(f"Auto-registered blueprint: {module_name}.{attr_name}")

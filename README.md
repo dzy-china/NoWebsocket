@@ -1,5 +1,7 @@
 
 # NoWebsocket 库 使用文档
+**一个Python WebSocket服务端框架，支持零配置多文件路由管理，实现高效、模块化的实时通信开发。**
+
 ## 安装指南
 
 ### 环境要求
@@ -9,11 +11,11 @@
 ### 安装步骤
 1. 将库代码克隆到项目目录：
    ```bash
-   git clone https://github.com/your-repository/websocket-lib.git
+   git clone git@github.com:dzy-china/NoWebsocket.git
    ```
 2. pip安装：
    ```python
-   
+   pip install NoWebsocket
    ```
 
 ---
@@ -22,9 +24,7 @@
 
 ### 创建一个简单的WebSocket服务器
 ```python
-from NoWebsocket.server import WebSocketServer
-from NoWebsocket.router import WebSocketRouter
-from NoWebsocket.application import WebSocketApplication
+from NoWebsocket import WebSocketServer, WebSocketRouter, WebSocketApplication
 
 # 定义应用类
 class EchoApp(WebSocketApplication):
@@ -52,8 +52,8 @@ websocat ws://localhost:8765/echo
 > 入口文件：main.py
 
 ```python
-from websocket.server import WebSocketServer
-from websocket.router import WebSocketRouter, Blueprint
+from NoWebsocket import WebSocketServer, WebSocketRouter, Blueprint
+
 
 def create_app():
     router = WebSocketRouter()
@@ -79,10 +79,12 @@ if __name__ == "__main__":
 ```
 
 > 路由控制器处理文件：blueprints/chat/Uer.py
+>
+> blueprints包下必须存在`__init__.py`,该文件可以为空，
+> 一个目录必须包含`__init__.py`文件才能被识别为**包**（Package），这是Python模块系统的约定
 
 ```python
-from websocket.application import WebSocketApplication
-from websocket.router import Blueprint
+from NoWebsocket import WebSocketApplication, Blueprint
 
 chat_bp = Blueprint(prefix='/chat')
 
@@ -180,31 +182,6 @@ class User(WebSocketApplication):
 </html>
 ```
 
-
-
-## 核心功能
-
-### 连接管理
-- **建立连接**：通过`WebSocketConnection`类处理数据帧的收发。
-- **心跳机制**：自动响应Ping帧，保持连接活跃。
-- **关闭连接**：支持正常关闭（状态码1000）和异常关闭（如超时）。
-
-### 协议处理
-- **握手验证**：自动完成WebSocket握手协议。
-- **帧解析**：支持分片消息、掩码处理、控制帧（Ping/Pong/Close）。
-- **数据编码**：自动处理UTF-8文本和二进制数据。
-
-### 异常处理
-- **内置异常**：`WebSocketError`包含错误码和原因。
-  ```python
-  raise WebSocketError(1002, "Invalid frame format")
-  ```
-- **错误码参考**：
-  
-  - `1002`: 协议错误
-  - `1009`: 消息过大
-  - `1011`: 服务器内部错误
-
 ### 配置选项
 在服务器初始化时设置：
 ```python
@@ -213,7 +190,7 @@ server = WebSocketServer(
     router,
     max_header_size=8192,       # 最大请求头大小
     max_message_size=4*1024*1024, # 最大消息大小（4MB）
-    read_timeout=60              # 读取超时（秒）
+    read_timeout=60              # 等待读取信息超时（秒）
 )
 ```
 
@@ -226,10 +203,10 @@ server = WebSocketServer(
 > blueprints/chat/Uer.py
 
 ```python
-from websocket.application import WebSocketApplication
-from websocket.router import Blueprint
+from NoWebsocket import WebSocketApplication, Blueprint
 
-chat_bp = Blueprint(prefix='/chat') # 蓝图实例
+chat_bp = Blueprint(prefix='/chat')  # 蓝图实例
+
 
 @chat_bp.route("/youmi")
 class User(WebSocketApplication):
@@ -254,24 +231,27 @@ class User(WebSocketApplication):
 > main.py
 
 ```python
-from websocket.router import Blueprint
+from NoWebsocket import Blueprint
 
 Blueprint.auto_register(
     router,
-    # __init__ _bp
-    # 自动扫描`blueprints`目录下所有以`.py`结尾的文件(__init__.py除外)
-    package_path="blueprints",  
-    # `blueprints`目录下以`.py`结尾的文件内必须存在蓝图实例变量后缀`_bp`
+    package_path="blueprints", # 指定路由文件存放的包，包内必须存在`__init__.py`文件，该文件可以为空
+    # 指定蓝图实例变量后缀，不写默认为'_bp'
     # 如：'chat_bp = Blueprint(prefix='/chat')'
-    bp_suffix="_bp"             
+    bp_suffix="_bp"
 )
 ```
+
+> `bp_suffix`参数的存在是**为了平衡灵活性与规范性**，它通过命名约定帮助开发者更精确地控制哪些蓝图实例应被自动注册
+
+
 
 **目录结构示例**：
 
 ```
 project/
 ├── blueprints/
+	__init__.py  # 必须存在，可以为空
 │   └── chat/
 │       └── User.py   # 包含 chat_bp = Blueprint()
 └── main.py
@@ -312,17 +292,19 @@ class UserHandler(WebSocketApplication):
 ## 示例应用
 
 ### 聊天应用
+
 ```python
 # blueprints/chat/handlers.py
-from websocket.router import Blueprint
-from websocket.application import WebSocketApplication
+from NoWebsocket import WebSocketApplication, Blueprint
 
 chat_bp = Blueprint(prefix="/chat")
+
 
 @chat_bp.route("/public")
 class PublicChat(WebSocketApplication):
     def on_message(self, message):
         self.connection.send_text(f"[Public] {message}")
+
 
 @chat_bp.route("/private/{room}")
 class PrivateChat(WebSocketApplication):
@@ -332,12 +314,13 @@ class PrivateChat(WebSocketApplication):
 ```
 
 ### 文件传输
+
 ```python
 # blueprints/file/handlers.py
-from websocket.router import Blueprint
-from websocket.application import WebSocketApplication
+from NoWebsocket import WebSocketApplication, Blueprint
 
 file_bp = Blueprint(prefix="/file")
+
 
 @file_bp.route("/upload")
 class FileUpload(WebSocketApplication):

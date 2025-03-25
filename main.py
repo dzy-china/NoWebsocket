@@ -1,5 +1,5 @@
-from websocket.server import WebSocketServer
-from websocket.router import WebSocketRouter, Blueprint
+from NoWebsocket import WebSocketServer
+from NoWebsocket.router import WebSocketRouter, Blueprint
 
 
 def create_app():
