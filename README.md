@@ -272,19 +272,16 @@ class StatusHandler(WebSocketApplication):
 ```
 
 ### 参数化路由
-**定义动态路径**：
+> **请求url：**`ws://localhost:9000/deepseek/v3`
 
 ```python
-router.add_route("/user/{user_id:int}", UserHandler)
-```
-
-**在应用中获取参数**：
-
-```python
-class UserHandler(WebSocketApplication):
+from NoWebsocket import WebSocketApplication
+chat_bp = Blueprint(prefix='/deepseek')
+@chat_bp.route("/{version}")
+class Deepseek(WebSocketApplication):
     def on_open(self):
-        user_id = self.path_params["user_id"]
-        self.connection.send_text(f"User ID: {user_id}")
+        version = self.path_params["version"]  # 获取路由参数
+        print(version) # v3
 ```
 
 ---
