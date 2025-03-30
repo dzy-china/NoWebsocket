@@ -1,23 +1,19 @@
-from NoWebsocket import WebSocketServer
-from NoWebsocket.router import WebSocketRouter, Blueprint
+import logging
+
+from NoWebsocket.server import WebSocketServer
+from NoWebsocket.utils import setup_logging
 
 
-def create_app():
-    router = WebSocketRouter()
-
-    # 自动注册所有蓝图
-    Blueprint.auto_register(
-        router,
-        package_path='blueprints',
-        bp_suffix='_bp'
-    )
-
-    return WebSocketServer(("0.0.0.0", 9000), router)
-
+# 初始化日志系统（INFO 级别）
+setup_logging(logging.INFO)
 
 if __name__ == "__main__":
-    server = create_app()
-    print("WebSocket server running on ws://localhost:9000")
+    # 自动注册蓝图（扫描 blueprints 目录）
+    server = WebSocketServer.create_with_blueprints(
+        host='0.0.0.0',  # 监听所有网络接口
+        port=8765  # 绑定端口
+    )
+    print("Server running → ws://0.0.0.0:8765")
     try:
         server.serve_forever()  # 启动服务
     except KeyboardInterrupt:

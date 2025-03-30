@@ -1,8 +1,7 @@
-# websocket/application.py
 class WebSocketApplication:
-    """WebSocket应用基类"""
-    def __init__(self):
-        self.connection = None
+    """WebSocket应用基类（用户继承实现业务逻辑）"""
+    def __init__(self, connection):
+        self.connection = connection
         self.path_params = None
 
     def on_open(self):

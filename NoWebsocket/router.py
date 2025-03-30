@@ -1,129 +1,127 @@
-# websocket/router.py
+# websocket_server/router.py
 import re
 import importlib
 import os
+import logging
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
+class Route:
+    """路由条目封装类"""
+    def __init__(self, pattern, handler, param_types, raw_path):
+        self.pattern = re.compile(pattern)
+        self.handler = handler
+        self.param_types = param_types
+        self.raw_path = raw_path
 
 class WebSocketRouter:
+    """路由管理器（支持冲突检测）"""
     def __init__(self):
         self.routes = []
+        self._registered_paths = set()
 
     def add_route(self, path, handler):
-        if not path.startswith('/'):
-            raise ValueError("Path must start with '/'")
+        if path in self._registered_paths:
+            logger.warning(f"路由冲突: 路径 '{path}' 已存在，本次注册将被忽略")
+            return False
         pattern_str, param_types = self._parse_path(path)
-        compiled = re.compile(pattern_str)
-        self.routes.append({
-            'pattern': compiled,
-            'param_types': param_types,
-            'handler': handler
-        })
+        self.routes.append(Route(pattern_str, handler, param_types, path))
+        self._registered_paths.add(path)
+        logger.info(f"路由注册成功: {path} -> {handler.__name__}")
+        return True
+
+    def path_exists(self, path):
+        return path in self._registered_paths
 
     def _parse_path(self, path):
         param_types = {}
-
-        def replace(match):
+        def replace_token(match):
             name = match.group(1)
             type_hint = match.group(2) or 'str'
             param_types[name] = type_hint
-            regex = {
-                'int': r'\d+',
-                'str': r'[^/]+'
-            }.get(type_hint, type_hint)
-            return f'(?P<{name}>{regex})'
-
-        pattern_str = re.sub(r'\{(\w+)(?::([^}]+))?\}', replace, path)
+            return {
+                'int': r'(?P<{}>\d+)'.format(name),
+                'str': r'(?P<{}>[^/]+)'.format(name)
+            }.get(type_hint, r'(?P<{}>{})'.format(name, type_hint))
+        pattern_str = re.sub(r'\{(\w+)(?::([^}]+))?\}', replace_token, path)
         return f'^{pattern_str}$', param_types
 
     def match(self, request_path):
         for route in self.routes:
-            m = route['pattern'].match(request_path)
-            if m:
-                params = {}
-                for name, value in m.groupdict().items():
-                    type_hint = route['param_types'].get(name, 'str')
-                    if type_hint == 'int':
-                        try:
-                            params[name] = int(value)
-                        except ValueError:
-                            return None, None
-                    else:
-                        params[name] = value
-                return route['handler'], params
+            match = route.pattern.match(request_path)
+            if match:
+                params = self._cast_params(match.groupdict(), route.param_types)
+                return route.handler, params
         return None, None
 
+    @staticmethod
+    def _cast_params(params, types):
+        result = {}
+        for name, value in params.items():
+            type_hint = types.get(name, 'str')
+            try:
+                result[name] = int(value) if type_hint == 'int' else value
+            except ValueError:
+                pass
+        return result
 
 class Blueprint:
-    """路由蓝图，支持自动注册"""
-
+    """路由蓝图（记录模块路径）"""
     def __init__(self, prefix=''):
-        self._routes = []
         self.prefix = prefix.rstrip('/')
+        self._routes = []
+        self.module_path = None  # 新增：记录模块导入路径（如 blueprints.chat_bp）
 
     def route(self, path):
-        """路由装饰器工厂"""
-
         def decorator(handler):
             full_path = f"{self.prefix}{path}"
             self._routes.append((full_path, handler))
             return handler
-
         return decorator
 
     def register(self, router):
-        """将蓝图中的路由注册到路由器"""
+        conflict_detected = False
+        for path, _ in self._routes:
+            if router.path_exists(path):
+                # 打印模块路径而非文件路径
+                logger.warning(
+                    f"蓝图路由冲突: 路径 '{path}' 已存在，跳过模块 '{self.module_path}' 的注册"
+                )
+                conflict_detected = True
+                break
+        if conflict_detected:
+            return False
         for path, handler in self._routes:
             router.add_route(path, handler)
+        return True
 
     @classmethod
-    def auto_register(cls, router, package_path='blueprints', bp_suffix='_bp'):
-        """
-        自动注册蓝图
-        :param router: WebSocketRouter实例
-        :param package_path: 蓝图包路径，默认为'blueprints'
-        :param bp_suffix: 蓝图实例后缀，默认为'_bp'
-        """
+    def auto_discover(cls, router, package='blueprints'):
         try:
-            # 导入蓝图包
-            package = importlib.import_module(package_path)
-        except ImportError as e:
-            raise ValueError(f"Package {package_path} not found") from e
-
-        # 获取蓝图包的目录路径
-        package_dir = Path(package.__file__).parent.resolve()
-
-        if not package_dir.exists():
-            raise ValueError(f"Blueprint directory {package_dir} not found")
-
-        # 遍历蓝图包目录下的所有文件
+            package_module = importlib.import_module(package)
+        except ImportError:
+            logger.warning(f"蓝图包 '{package}' 未找到")
+            return
+        package_dir = Path(package_module.__file__).parent
         for root, _, files in os.walk(package_dir):
-            # 计算相对于包目录的相对路径
-            relative_root = Path(root).relative_to(package_dir)
-            # 构造模块名前缀
-            module_parts = list(relative_root.parts)
-            if module_parts:
-                module_prefix = f"{package_path}.{'.'.join(module_parts)}"
-            else:
-                module_prefix = package_path
-
-            for file_name in files:
-                if not file_name.endswith('.py') or file_name == '__init__.py':
+            rel_path = Path(root).relative_to(package_dir)
+            module_prefix = f"{package}.{'.'.join(rel_path.parts)}" if rel_path.parts else package
+            for file in files:
+                if not (file.endswith('_bp.py') or file.endswith('Bp.py')) or file == '__init__.py':
                     continue
-
-                # 提取模块名
-                module_name = f"{module_prefix}.{file_name[:-3]}"
-
+                # 构造模块名（如 blueprints.chat_bp）
+                module_name = f"{module_prefix}.{file[:-3]}"
                 try:
-                    # 动态导入模块
                     module = importlib.import_module(module_name)
                 except Exception as e:
-                    print(f"Failed to import module {module_name}: {str(e)}")
+                    logger.error(f"导入模块失败: {module_name} - {str(e)}")
                     continue
-
-                # 查找模块中的Blueprint实例
+                # 为蓝图实例设置模块路径
                 for attr_name in dir(module):
                     obj = getattr(module, attr_name)
-                    if isinstance(obj, Blueprint) and attr_name.endswith(bp_suffix):
-                        obj.register(router)
-                        print(f"Auto-registered blueprint: {module_name}.{attr_name}")
+                    if isinstance(obj, Blueprint):
+                        obj.module_path = module_name  # 记录模块导入路径
+                        success = obj.register(router)
+                        if success:
+                            logger.info(f"自动注册蓝图: {module_name} -> {obj.prefix}")

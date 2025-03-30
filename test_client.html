@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <title>WebSocket 示例</title>
+</head>
+<body>
+<div>
+    <p>连接状态: <span id="status">未连接</span></p>
+    <input type="text" id="messageInput" placeholder="输入消息">
+    <button onclick="sendMessage()">发送</button>
+</div>
+<div id="messages"></div>
+
+<script>
+    // 创建 WebSocket 连接
+    const socket = new WebSocket('ws://localhost:8765/echo/v3'); // 使用公开测试服务器
+
+    // 连接打开时触发
+    socket.addEventListener('open', (event) => {
+        updateStatus('已连接');
+        logMessage('系统: 连接已建立');
+
+        // 发送初始测试消息
+        socket.send('你好，服务器!');
+    });
+
+    // 接收消息时触发
+    socket.addEventListener('message', (event) => {
+        logMessage(`服务器: ${event.data}`);
+    });
+
+    // 错误处理
+    socket.addEventListener('error', (event) => {
+        updateStatus('连接错误');
+        console.error('WebSocket 错误:', event);
+    });
+
+    // 连接关闭时触发
+    socket.addEventListener('close', (event) => {
+        updateStatus('连接已关闭');
+        logMessage(`系统: 连接关闭 (代码 ${event.code})`);
+    });
+
+    // 发送消息
+    function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const message = input.value;
+
+        if (message) {
+            socket.send(message);
+            logMessage(`你: ${message}`);
+            input.value = '';
+        }
+    }
+
+    // 更新状态显示
+    function updateStatus(status) {
+        document.getElementById('status').textContent = status;
+    }
+
+    // 记录消息到页面
+    function logMessage(message) {
+        const messagesDiv = document.getElementById('messages');
+        const p = document.createElement('p');
+        p.textContent = message;
+        messagesDiv.appendChild(p);
+    }
+</script>
+</body>
+</html>
