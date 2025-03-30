@@ -10,8 +10,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/dzy-china/NoWebsocket",
     packages=find_packages(),
-    install_requires=[          # 依赖项（可选）
-    ],
+    install_requires=[ ],# 依赖项（可选）
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

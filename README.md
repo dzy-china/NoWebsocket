@@ -13,7 +13,6 @@ python --version
 
 # pip安装
 pip install NoWebsocket
-
 ```
 
 ### 2. 创建蓝图文件
