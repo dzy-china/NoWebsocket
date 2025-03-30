@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="NoWebsocket",          # 包名称（PyPI 唯一标识）
-    version="2.0.1",            # 版本号
+    version="2.1.2",            # 版本号
     author="dzy",
     author_email="1129881228@qq.com",
     description="一个Python WebSocket服务端框架，支持零配置多文件路由管理，实现高效、模块化的实时通信开发。",

@@ -20,8 +20,7 @@ pip install NoWebsocket
 在 `blueprints` 目录下新建 `echo_bp.py`：  
 ```python
 # blueprints/echo_bp.py
-from NoWebsocket.router import Blueprint
-from NoWebsocket.application import WebSocketApplication
+from NoWebsocket import Blueprint,WebSocketApplication
 
 echo_bp = Blueprint('/echo')
 
@@ -46,9 +45,9 @@ class EchoHandler(WebSocketApplication):
 ### 3. 编写服务器启动代码
 创建 `main.py`：  
 ```python
-# server.py
-from NoWebsocket.server import WebSocketServer
-from NoWebsocket.utils import setup_logging
+# main.py
+import logging
+from NoWebsocket import WebSocketServer,setup_logging
 
 # 初始化日志系统（INFO 级别）
 setup_logging(logging.INFO)
@@ -118,8 +117,7 @@ if __name__ == '__main__':
 
 ### 2. **自定义创建方法（构造函数）**
 ```python
-from NoWebsocket.server import WebSocketServer
-from NoWebsocket.router import WebSocketRouter
+from NoWebsocket.server import WebSocketServer,WebSocketRouter
 
 router = WebSocketRouter()
 server = WebSocketServer(
