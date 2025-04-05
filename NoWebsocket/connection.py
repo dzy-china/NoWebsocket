@@ -4,7 +4,6 @@ import logging
 import time
 from collections import deque
 from .exceptions import WebSocketError
-from .constants import DEFAULT_CLOSE_TIMEOUT
 
 logger = logging.getLogger(__name__)
 

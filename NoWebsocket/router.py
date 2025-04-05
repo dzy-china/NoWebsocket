@@ -4,6 +4,7 @@ import importlib
 import os
 import logging
 from pathlib import Path
+from .exceptions import WebSocketError
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,14 @@ class WebSocketRouter:
     def __init__(self):
         self.routes = []
         self._registered_paths = set()
+        self.route_cache = {}
+        self.MAX_CACHE_SIZE = 1000  # 新增缓存大小限制
+        self.type_converters = {
+            'int': int,
+            'float': float,
+            'str': str,
+            'bool': lambda v: str(v).lower() in ('true', '1', 'yes', 'on')
+        }  # 新增类型转换字典
 
     def add_route(self, path, handler):
         if path in self._registered_paths:
@@ -49,22 +58,32 @@ class WebSocketRouter:
 
     def match(self, request_path):
         for route in self.routes:
-            match = route.pattern.match(request_path)
-            if match:
-                params = self._cast_params(match.groupdict(), route.param_types)
+            if (match := route.pattern.match(request_path)):
+                params = {k: self._cast_param(v, route.param_types.get(k)) 
+                         for k, v in match.groupdict().items()}
+                
+                # 更新缓存
+                if len(self.route_cache) >= self.MAX_CACHE_SIZE:
+                    self.route_cache.pop(next(iter(self.route_cache)))
+                self.route_cache[request_path] = {
+                    'handler': route.handler,
+                    'params': params
+                }
                 return route.handler, params
         return None, None
 
-    @staticmethod
-    def _cast_params(params, types):
-        result = {}
-        for name, value in params.items():
-            type_hint = types.get(name, 'str')
-            try:
-                result[name] = int(value) if type_hint == 'int' else value
-            except ValueError:
-                pass
-        return result
+    def _cast_param(self, value, type_hint):
+        if not type_hint or type_hint == 'str':
+            return value
+        
+        converter = self.type_converters.get(type_hint)
+        if not converter:
+            return value
+        
+        try:
+            return converter(value)
+        except (ValueError, AttributeError) as e:
+            raise WebSocketError(400, f'Invalid {type_hint} parameter: {value}')
 
 class Blueprint:
     """路由蓝图（记录模块路径）"""
@@ -101,7 +120,10 @@ class Blueprint:
         try:
             package_module = importlib.import_module(package)
         except ImportError:
-            logger.warning(f"蓝图包 '{package}' 未找到")
+            logger.warning(f"❌ 蓝图包 '{package}' 未找到")
+            return
+        if not hasattr(package_module, '__file__') or not package_module.__file__:
+            logger.error(f"❌ 蓝图包 '{package}' 缺少有效文件路径")
             return
         package_dir = Path(package_module.__file__).parent
         for root, _, files in os.walk(package_dir):
@@ -110,12 +132,11 @@ class Blueprint:
             for file in files:
                 if not (file.endswith('_bp.py') or file.endswith('Bp.py')) or file == '__init__.py':
                     continue
-                # 构造模块名（如 blueprints.chat_bp）
                 module_name = f"{module_prefix}.{file[:-3]}"
                 try:
                     module = importlib.import_module(module_name)
                 except Exception as e:
-                    logger.error(f"导入模块失败: {module_name} - {str(e)}")
+                    logger.error(f"❌ 导入模块失败: {module_name} - {str(e)}", exc_info=True)
                     continue
                 # 为蓝图实例设置模块路径
                 for attr_name in dir(module):

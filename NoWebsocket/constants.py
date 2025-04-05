@@ -1,6 +1,6 @@
 DEFAULT_MAX_HEADER_SIZE = 4096
 DEFAULT_MAX_MESSAGE_SIZE = 2 * 1024 * 1024  # 2MB
-DEFAULT_CLOSE_TIMEOUT = 5                   # 关闭超时（秒）
-DEFAULT_READ_TIMEOUT = 30 * 60              # 读超时（秒）
-WS_VERSION = '13'                            # WebSocket协议版本
+DEFAULT_CLOSE_TIMEOUT = 5  # 关闭超时（秒）
+DEFAULT_READ_TIMEOUT = 30 * 60  # 读超时（秒）
+WS_VERSION = '13'  # WebSocket协议版本
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'  # RFC6455定义的GUID

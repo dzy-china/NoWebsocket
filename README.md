@@ -1,12 +1,25 @@
-# `NoWebsocket` 完整使用文档
+# NoWebsocket 库使用文档
 
-> **一个Python WebSocket服务端框架，支持零配置多文件路由管理，实现高效、模块化的实时通信开发。**
+---
+
+> **一个面向对象的Python WebSocket服务端框架，支持零配置多文件路由管理，实现高效、模块化的实时通信开发。**
+
+## 目录
+
+1. [快速开始](#快速开始)  
+2. [路由](#路由)  
+3. [连接对象](#连接对象)  
+4. [应用开发](#应用开发)  
+5. [服务器配置](#服务器配置)  
+6. [日志配置](#日志配置)  
+8. [协议版本](#协议版本)  
 
 ---
 
 ## 快速开始
 
-### 1. 环境准备
+> 1.环境准备
+
 ```bash
 # 确认 Python 版本 ≥ 3.7
 python --version
@@ -15,309 +28,212 @@ python --version
 pip install NoWebsocket
 ```
 
-### 2. 创建蓝图文件
-在 `blueprints` 目录下新建 `echo_bp.py`：  
+> 2.创建蓝图并注册路由: blueprints/ChatHandlerBp.py
+
 ```python
-# blueprints/echo_bp.py
-from NoWebsocket import Blueprint,WebSocketApplication
-
-echo_bp = Blueprint('/echo')
-
-@echo_bp.route('/{message:str}')
-class EchoHandler(WebSocketApplication):
+from NoWebsocket import WebSocketApplication, Blueprint
+bp = Blueprint(prefix="/chat")
+@bp.route("/room/{room_id:int}")
+class ChatHandlerBp(WebSocketApplication): # 定义业务处理类（继承 WebSocketApplication）
     def on_open(self):
-        # 正确获取路径参数（类型为 str，无需转换）
-        initial_message = self.path_params.get('message', '')
-        self.connection.send_text(f"初始消息: {initial_message}")
+        print(f"客户端 {self.connection.client_address} 已连接")
 
     def on_message(self, message):
-        print(message)
-        self.connection.send_text(f"{message}")
-
-    def on_close(self):
-        # 正确获取关闭状态码和原因
-        code = self.connection.close_code
-        reason = self.connection.close_reason or "未知原因"
-        print(f"连接关闭 → 状态码: {code}, 原因: {reason}")
+        self.connection.send_text(f"收到消息: {message}")
 ```
 
-### 3. 编写服务器启动代码
-创建 `main.py`：  
+> 3.启动服务器: main.py
+
 ```python
-# main.py
-import logging
-from NoWebsocket import WebSocketServer,setup_logging
-
-# 初始化日志系统（INFO 级别）
-setup_logging(logging.INFO)
-
-if __name__ == '__main__':
-    # 自动注册蓝图（扫描 blueprints 目录）
-    server = WebSocketServer.create_with_blueprints(
-        host='0.0.0.0',  # 监听所有网络接口
-        port=8765        # 绑定端口
-    )
-    print("Server running → ws://0.0.0.0:8765")
-    try:
-        server.serve_forever()  # 启动服务
-    except KeyboardInterrupt:
-        server.shutdown()  # 优雅关闭
-        print("\n🛑 Server stopped")
+from NoWebsocket import WebSocketServer
+server = WebSocketServer.create_with_blueprints(
+    host="0.0.0.0",
+    port=8765,
+    blueprint_package="blueprints",  # 自动扫描的蓝图包名
+    enable_logging=True
+)
+server.serve_forever()
 ```
 
-### 4. 客户端测试
-创建 `test_client.html`：  
+
+> 4.客户端连接: index.html
+
 ```html
 <!DOCTYPE html>
-<html>
+<html lang="zh-cn">
+<head>
+    <title>WebSocket 示例</title>
+</head>
 <body>
-    <div id="output"></div>
-    <input id="message" placeholder="输入消息">
-    <button onclick="send()">发送</button>
-    <script>
-        // 连接地址必须与路由匹配（/echo/Hello 对应动态参数）
-        const ws = new WebSocket('ws://localhost:8765/echo/Hello');
-        
-        // 消息接收处理
-        ws.onmessage = (event) => {
-            const output = document.getElementById('output');
-            output.innerHTML += `<p>${event.data}</p>`;
-        };
+<div>
+    <p>连接状态: <span id="status">未连接</span></p>
+    <input type="text" id="messageInput" placeholder="输入消息">
+    <button onclick="sendMessage()">发送</button>
+</div>
+<div id="messages"></div>
 
-        // 发送消息（仅文本）
-        const send = () => {
-            const input = document.getElementById('message');
-            if (input.value.trim()) {
-                ws.send(input.value);
-                input.value = '';
-            }
-        };
+<script>
+    // 创建 WebSocket 连接
+    const socket = new WebSocket('ws://localhost:8765/chat/a8'); 
 
-        // 错误处理
-        ws.onerror = (error) => {
-            console.error("连接错误:", error);
-            alert("连接失败，请检查服务器是否运行！");
-        };
-    </script>
+    // 连接打开时触发
+    socket.addEventListener('open', (event) => {
+        updateStatus('已连接');
+        logMessage('系统: 连接已建立');
+
+        // 发送初始测试消息
+        socket.send('你好，服务器!');
+    });
+
+    // 接收消息时触发
+    socket.addEventListener('message', (event) => {
+        logMessage(`服务器: ${event.data}`);
+    });
+
+    // 错误处理
+    socket.addEventListener('error', (event) => {
+        updateStatus('连接错误');
+        console.error('WebSocket 错误:', event);
+    });
+
+    // 连接关闭时触发
+    socket.addEventListener('close', (event) => {
+        updateStatus('连接已关闭');
+        logMessage(`系统: 连接关闭 (代码 ${event.code})`);
+    });
+
+    // 发送消息
+    function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const message = input.value;
+
+        if (message) {
+            socket.send(message);
+            logMessage(`你: ${message}`);
+            input.value = '';
+        }
+    }
+
+    // 更新状态显示
+    function updateStatus(status) {
+        document.getElementById('status').textContent = status;
+    }
+
+    // 记录消息到页面
+    function logMessage(message) {
+        const messagesDiv = document.getElementById('messages');
+        const p = document.createElement('p');
+        p.textContent = message;
+        messagesDiv.appendChild(p);
+    }
+</script>
 </body>
 </html>
 ```
+---
+
+## 路由
+
+以下是三种路由创建方式的示例代码：
 
 ---
 
-## 核心配置详解
-
-### 1. **快速创建方法（`create_with_blueprints`）**
-| 参数                | 类型   | 默认值       | 说明                                                                 |
-|---------------------|--------|--------------|--------------------------------------------------------------------|
-| `host`              | str    | 必填         | 服务器绑定地址（如 `0.0.0.0` 表示监听所有接口）                          |
-| `port`              | int    | 必填         | 服务器绑定端口                                                        |
-| `blueprint_package` | str    | `'blueprints'` | 蓝图文件存放的包名（目录名）                                            |
-
-### 2. **自定义创建方法（构造函数）**
+### **方式1：手动注册路由**
 ```python
-from NoWebsocket.server import WebSocketServer,WebSocketRouter
-
-router = WebSocketRouter()
-server = WebSocketServer(
-    server_address=('0.0.0.0', 8765),
-    router=router,
-    max_header_size=8192,               # HTTP请求头最大字节数（默认 4096）
-    max_message_size=10 * 1024 * 1024,  # 单条消息最大字节数（默认 2MB）
-    read_timeout=300                    # 无数据交互的超时断开时间（秒，默认 1800）
-)
-```
-
----
-
-## 生命周期钩子全解
-
-### 1. **`on_open()`**
-- **触发时机**：连接建立后立即调用。  
-- **正确示例**：  
-  ```python
-  def on_open(self):
-      # 获取客户端IP
-      client_ip = self.connection.sock.getpeername()[0]
-      message = self.path_params.get('message', '')
-      print(f"新连接来自 {client_ip}，初始参数: {message}")
-  ```
-
-### 2. **`on_message(message: str)`**
-- **触发时机**：收到完整的文本消息。  
-- **正确示例**：  
-  ```python
-  def on_message(self, message):
-      if not isinstance(message, str):
-          self.connection.close(1007, "仅支持文本消息")
-          return
-      self.connection.send_text(f"处理后的消息: {message.upper()}")
-  ```
-
-### 3. **`on_binary(data: bytes)`**
-- **触发时机**：收到完整的二进制消息。  
-- **正确示例**：  
-  ```python
-  def on_binary(self, data):
-      try:
-          with open('upload.bin', 'wb') as f:
-              f.write(data)
-          self.connection.send_text("文件保存成功")
-      except Exception as e:
-          self.connection.close(1011, f"保存失败: {str(e)}")
-  ```
-
-### 4. **`on_close()`**
-- **触发时机**：连接关闭时调用。  
-- **正确示例**：  
-  ```python
-  def on_close(self):
-      code = self.connection.close_code
-      reason = self.connection.close_reason or "未知原因"
-      logger.info(f"连接关闭 → 状态码: {code}, 原因: {reason}")
-  ```
-
----
-
-## RFC6455 标准错误代码
-
-| 状态码 | 中文名称               | 触发场景                                                                 | 解决方案                                                                 |
-|--------|-----------------------|--------------------------------------------------------------------------|--------------------------------------------------------------------------|
-| **1000** | 正常关闭               | 客户端或服务器主动关闭连接                                                | 无需处理，属于正常操作。                                                   |
-| **1002** | 协议错误               | 非法帧格式、握手失败、RSV位非零                                           | 检查客户端数据格式，确保符合 WebSocket 协议。                                |
-| **1007** | 数据格式无效           | 文本消息包含非 UTF-8 编码数据                                             | 客户端发送纯文本消息，或改用 `send_binary` 发送原始字节。                     |
-| **1009** | 消息过大               | 消息长度超过 `max_message_size` 配置                                      | 调整服务器配置：`max_message_size=50 * 1024 * 1024`（50MB）。                |
-| **1011** | 内部错误               | 服务器未捕获的异常（如代码逻辑错误）                                       | 检查服务器日志，修复异常逻辑。                                               |
-
----
-
-## 路由与蓝图系统
-
----
-
-#### 1. 蓝图基本概念
-蓝图（`Blueprint`）用于模块化组织 WebSocket 路由，允许将不同功能的路由拆分到独立模块中。所有蓝图文件需以 `_bp.py`或`Bp.py`  结尾，并保存在指定的包目录（默认为 `blueprints`）。
-
----
-
-#### 2. 创建蓝图
-**步骤 1：定义蓝图实例**  
-在模块中创建 `Blueprint` 实例，可指定 URL 前缀：
-
-```python
-# blueprints/ChatBp.py
-from NoWebsocket import Blueprint
-
-bp = Blueprint(prefix="/chat")  # 所有路由自动添加 /chat 前缀
-```
-
-**步骤 2：定义路由处理类**  
-继承 `WebSocketApplication` 实现业务逻辑：
-
-```python
-from NoWebsocket import WebSocketApplication
+# 主程序入口（如 main.py）
+from NoWebsocket import WebSocketApplication, WebSocketRouter,WebSocketServer
 class ChatHandler(WebSocketApplication):
     def on_message(self, message):
-        self.connection.send_text(f"Echo: {message}")
-```
+        self.connection.send_text(f"收到消息: {message}")
 
-**步骤 3：添加路由装饰器**  
-使用 `@bp.route` 绑定路径与处理类：
+# 手动创建路由器并添加路由
+router = WebSocketRouter()
+router.add_route("/chat", ChatHandler)
 
-```python
-@bp.route("/room/{str:room_id}")
-class ChatHandler:
-    pass  # 处理类需在此处定义
+# 启动服务器
+server = WebSocketServer(("0.0.0.0", 8000), router)
+server.serve_forever()
 ```
 
 ---
 
-#### 3. 自动注册蓝图
-**目录结构示例**  
-```ini
-your_project/
-├── blueprints/
-│   ├── __init__.py    # 必须，可为空
-│   ├── ChatBp.py      # 自动发现
-│   └── NotifyBp.py   # 自动发现
-└── main.py
+### **方式2：手动注册蓝图**
+```python
+# 创建蓝图文件（如 blueprints/chat_bp.py）
+from NoWebsocket import WebSocketApplication, Blueprint
+
+chat_bp = Blueprint(prefix="/api")  # 设置蓝图前缀
+
+@chat_bp.route("/chat")
+class ChatHandler(WebSocketApplication):
+    def on_message(self, message):
+        self.connection.send_text(f"API消息: {message}")
+
+# 主程序入口（如 main.py）
+from NoWebsocket import WebSocketServer, WebSocketRouter
+
+router = WebSocketRouter()
+chat_bp.register(router)  # 手动注册蓝图到路由器
+
+# 启动服务器
+server = WebSocketServer(("0.0.0.0", 8000), router)
+server.serve_forever()
 ```
 
-**启动服务器时自动加载**  
-```python
-from NoWebsocket import WebSocketServer
+---
 
+### **方式3：自动注册蓝图**
+```python
+# 蓝图文件（必须放在 blueprints 包下，并以 _bp.py 或 Bp.py 结尾）
+# 文件路径：blueprints/AutoChatBp.py
+from NoWebsocket import WebSocketApplication, Blueprint
+
+chat_bp = Blueprint(prefix="/auto")  # 蓝图前缀
+
+@chat_bp.route("/chat")
+class AutoChatBp(WebSocketApplication):
+    def on_message(self, message):
+        self.connection.send_text(f"自动路由消息: {message}")
+
+# 主程序入口（如 main.py）
+from server import WebSocketServer
+
+# 自动发现并注册蓝图
 server = WebSocketServer.create_with_blueprints(
-    host="0.0.0.0", 
-    port=8765,
-    blueprint_package="blueprints"  # 指定蓝图包名
+    host="0.0.0.0",
+    port=8000,
+    blueprint_package="blueprints",  # 指定蓝图包名
+    enable_logging=True
 )
 server.serve_forever()
 ```
 
 ---
 
-#### 4. 手动注册蓝图
-若需手动控制注册流程：
-```python
-from NoWebsocket import WebSocketRouter, Blueprint
+### **关键说明**
 
-router = WebSocketRouter()
-bp = Blueprint(prefix="/api")
+1. **文件结构要求**  
+   自动发现方式要求蓝图文件必须满足：  
+   - 放置在`blueprints`目录下（默认包名，可自定义）。  
+   - 文件名以`_bp.py`或`Bp.py`结尾（例如`chat_bp.py`）。  
+   - 包内需包含 `__init__.py`（可为空文件）。
+   
+2. **路由优先级**  
+   手动注册的路由优先级高于自动发现的蓝图路由，冲突时会忽略后者。
 
-@bp.route("/status")
-class StatusHandler(WebSocketApplication):
-    def on_open(self):
-        print("Client connected")
+3. **调试日志**  
+   启用日志（`enable_logging=True`）可查看路由注册过程和冲突警告。
 
-bp.register(router)  # 手动注册到路由器
-```
-
----
-
-#### 5. 路径参数与类型
-- **语法**：`{类型:参数名}`（类型支持 `int`/`str`，默认为 `str`）
+###  路径参数
+- **语法**：支持类型标注（如 `{id:int}` 或 `{name:str}`）：
 - **示例**：  
   
   ```python
-  @bp.route("/user/{int:user_id}")
-  class UserHandler:
-      def on_message(self, message):
-          user_id = self.path_params["user_id"]  # 获取 int 类型参数
+  @bp.route("/user/{user_id:int}")
+  class UserHandler(WebSocketApplication):
+      def on_open(self):
+          user_id = self.path_params["user_id"]  # 获取参数
   ```
-
----
-
-#### 6. 注意事项
-1. **冲突检测**  
-   - 若路径重复，后注册的蓝图会跳过并输出警告。
-   - 自动发现时，冲突的整个模块会被忽略。
-
-2. **模块命名规范**  
-   - 蓝图文件必须命名为 `*_bp.py`（如 `chat_bp.py`）。
-   - 包内需包含 `__init__.py`（可为空文件）。
-
-3. **错误排查**  
-   - 若蓝图未加载，检查日志中的模块导入错误。
-   - 确保处理类继承 `WebSocketApplication`。
-
----
-
-#### 7. 完整示例
-**文件：`blueprints/ChatBp.py`**
-
-```python
-from NoWebsocket import Blueprint, WebSocketApplication
-
-bp = Blueprint(prefix="/echo")
-
-@bp.route("/simple")
-class ChatBp(WebSocketApplication):
-    def on_message(self, message):
-        self.connection.send_text(f"Received: {message}")
-```
-
-启动服务后，客户端可通过 `ws://localhost:8765/echo/simple` 连接。
 
 ## 连接对象
 
@@ -359,71 +275,55 @@ self.connection.close(code=1000, reason="Bye")
 client_ip = self.connection.client_address[0]
 ```
 
-## 高级场景配置
-
-### 1. **消息分片发送**
+## 应用开发
+继承 `WebSocketApplication` 并实现事件方法：  
 ```python
-def send_large_message(self, data: bytes):
-    chunk_size = 1024  # 每片 1KB
-    for i in range(0, len(data), chunk_size):
-        chunk = data[i:i+chunk_size]
-        self.connection.send_binary(chunk)
-```
-
-### 2. **心跳检测实现**
-```python
-class HeartbeatHandler(WebSocketApplication):
+class CustomHandler(WebSocketApplication):
     def on_open(self):
-        self.last_ping = time.time()
-        threading.Thread(target=self._check_heartbeat, daemon=True).start()
-
-    def _check_heartbeat(self):
-        while self.connection.connected:
-            if time.time() - self.last_ping > 30:  # 30秒无心跳
-                self.connection.close(1001, "心跳超时")
-            time.sleep(5)
+        print("连接已建立")
 
     def on_message(self, message):
         if message == "ping":
-            self.last_ping = time.time()
             self.connection.send_text("pong")
+
+    def on_binary(self, data):
+        print(f"收到二进制数据: {len(data)} 字节")
+
+    def on_close(self):
+        print("连接已关闭")
 ```
 
 ---
 
-## 故障排查与最佳实践
+## 服务器配置
+通过 `WebSocketServer.create_with_blueprints` 配置参数：  
+| 参数                | 默认值               | 说明                          |
+|---------------------|---------------------|-----------------------------|
+| `max_message_size`  | 2MB                 | 单条消息最大长度                |
+| `read_timeout`      | 1800 秒（30 分钟）  | 读取超时时间                   |
+| `max_header_size`   | 4096 字节           | HTTP 请求头最大长度            |
 
-### 1. **常见问题修正**
-| 现象                  | 错误原因               | 修正方案                                                                 |
-|-----------------------|----------------------|-------------------------------------------------------------------------|
-| 客户端无法连接         | 路由路径不匹配          | 检查客户端连接地址是否与服务器路由定义一致（如 `/echo/Hello` vs `/echo/{message:str}`） |
-| 二进制消息未处理       | 未实现 `on_binary`     | 在处理器中实现 `on_binary` 方法                                           |
-| 消息过大被关闭         | 未调整 `max_message_size` | 在服务器配置中增加 `max_message_size` 参数                                 |
-
-### 2. **安全增强建议**
-- **输入过滤**：  
-  
-  ```python
-  def on_message(self, message):
-      # 防止 SQL 注入
-      if ';' in message or '--' in message:
-          self.connection.close(1008, "非法字符")
-  ```
-- **频率限制**：  
-  
-  ```python
-  from collections import defaultdict
-  request_count = defaultdict(int)
-  
-  def on_message(self, message):
-      ip = self.connection.client_address[0]
-      request_count[ip] += 1
-      if request_count[ip] > 100:
-          self.connection.close(1008, "请求过于频繁")
-  ```
+示例：  
+```python
+server = WebSocketServer.create_with_blueprints(
+    host="0.0.0.0",
+    port=8765,
+    max_message_size=5 * 1024 * 1024,  # 5MB
+    read_timeout=60 * 5                # 5分钟
+)
+```
 
 ---
 
-**文档版本**: 10.0.0  
-**更新日期**: 2025年03月30日  
-**维护团队**: 技术架构组  
+## 日志配置
+启用日志并设置级别：  
+```python
+server = WebSocketServer.create_with_blueprints(
+    enable_logging=True,
+    log_level=logging.DEBUG  # 可选 DEBUG/INFO/WARNING/ERROR
+)
+```
+---
+
+## 协议版本
+- **协议版本**：仅支持 RFC6455 (WebSocket 13)  

@@ -7,18 +7,21 @@ HEADER_REGEX = re.compile(rb'(?P<name>[^:\s]+):\s*(?P<value>.+?)\r\n')
 
 class ProtocolHandler:
     """WebSocket协议处理器"""
-    @staticmethod
-    def compute_accept_key(client_key):
-        sha1 = hashlib.sha1(client_key.encode() + WS_GUID.encode())
-        return base64.b64encode(sha1.digest()).decode()
+    _WS_GUID_BYTES = WS_GUID.encode('utf-8')
+
+    @classmethod
+    def compute_accept_key(cls, client_key):
+        combined = client_key.encode('utf-8') + cls._WS_GUID_BYTES
+        return base64.b64encode(hashlib.sha1(combined).digest()).decode()
 
     @staticmethod
     def parse_headers(data):
         headers = {}
-        for match in HEADER_REGEX.finditer(data):
-            name = match.group('name').decode('latin-1').lower()
-            value = match.group('value').decode('latin-1').strip()
-            headers[name] = value
+        headers.update(
+            (match.group('name').decode('latin-1').lower(), 
+             match.group('value').decode('latin-1').strip())
+            for match in HEADER_REGEX.finditer(data)
+        )
         return headers
 
     @classmethod

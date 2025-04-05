@@ -10,7 +10,13 @@ from .utils import validate_handshake_headers
 
 logger = logging.getLogger(__name__)
 
+from typing import override
+
+
 class WebSocketHandler(socketserver.BaseRequestHandler):
+    server: 'WebSocketServer'
+
+    @override
     def setup(self):
         self.conn = WebSocketConnection(
             self.request,
@@ -18,7 +24,7 @@ class WebSocketHandler(socketserver.BaseRequestHandler):
                 'max_message_size': self.server.max_message_size,
                 'read_timeout': self.server.read_timeout
             },
-            client_address=self.client_address  # 传递客户端地址
+            client_address=self.client_address
         )
         self.app = None
 
@@ -105,19 +111,70 @@ class WebSocketHandler(socketserver.BaseRequestHandler):
         finally:
             self.conn.close()
 
+
 class WebSocketServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, server_address, router, **kwargs):
+    # 显式声明服务器配置属性
+    max_header_size: int = DEFAULT_MAX_HEADER_SIZE
+    max_message_size: int = DEFAULT_MAX_MESSAGE_SIZE
+    read_timeout: float = DEFAULT_READ_TIMEOUT
+    router: WebSocketRouter
+
+    def __init__(
+            self,
+            server_address,
+            router,
+            enable_logging=False,
+            log_level=logging.INFO,
+            max_header_size=DEFAULT_MAX_HEADER_SIZE,
+            max_message_size=DEFAULT_MAX_MESSAGE_SIZE,
+            read_timeout=DEFAULT_READ_TIMEOUT,
+            **kwargs
+    ):
         super().__init__(server_address, WebSocketHandler)
         self.router = router
-        self.max_header_size = kwargs.get('max_header_size', DEFAULT_MAX_HEADER_SIZE)
-        self.max_message_size = kwargs.get('max_message_size', DEFAULT_MAX_MESSAGE_SIZE)
-        self.read_timeout = kwargs.get('read_timeout', DEFAULT_READ_TIMEOUT)
+        self.max_header_size = max_header_size
+        self.max_message_size = max_message_size
+        self.read_timeout = read_timeout
+
+        if enable_logging:
+            from .utils import setup_logging
+            setup_logging(log_level)
+        else:
+            # 完全禁用日志配置
+            logging.getLogger().handlers = []
+            logging.getLogger().propagate = False
 
     @classmethod
-    def create_with_blueprints(cls, host, port, blueprint_package='blueprints'):
+    def create_with_blueprints(
+            cls,
+            host,
+            port,
+            blueprint_package='blueprints',
+            enable_logging=True,
+            log_level=logging.INFO,
+            max_header_size=DEFAULT_MAX_HEADER_SIZE,
+            max_message_size=DEFAULT_MAX_MESSAGE_SIZE,
+            read_timeout=DEFAULT_READ_TIMEOUT
+    ):
+        """创建服务器实例并自动注册蓝图"""
+        if enable_logging:
+            from .utils import setup_logging
+            setup_logging(log_level)
+        else:
+            # 完全禁用日志配置
+            logging.getLogger().handlers = []
+            logging.getLogger().propagate = False
         router = WebSocketRouter()
         Blueprint.auto_discover(router, blueprint_package)
-        return cls((host, port), router)
+        return cls(
+            (host, port),
+            router,
+            enable_logging=False,
+            log_level=logging.NOTSET if not enable_logging else log_level,
+            max_header_size=max_header_size,
+            max_message_size=max_message_size,
+            read_timeout=read_timeout
+        )

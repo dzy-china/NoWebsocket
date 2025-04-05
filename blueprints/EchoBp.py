@@ -1,11 +1,11 @@
-# blueprints/echo_bp.py
+# blueprints/EchoBp.py
 from NoWebsocket.router import Blueprint
 from NoWebsocket.application import WebSocketApplication
 
 echo_bp = Blueprint('/echo')
 
 @echo_bp.route('/{message:str}')
-class Echo_bp(WebSocketApplication):
+class EchoBp(WebSocketApplication):
     def on_open(self):
         # 正确获取路径参数（类型为 str，无需转换）
         initial_message = self.path_params.get('message', '')
